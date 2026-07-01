@@ -1,0 +1,29 @@
+# Secrets — NEVER commit
+config/.env
+.env
+*.env
+!.env.example
+!config/.env.example
+
+# Database (live scan data, not for source control)
+database/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Claude local settings
+.claude/settings.local.json

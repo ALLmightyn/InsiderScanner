@@ -21,7 +21,7 @@ What makes this project worth reading isn't just the detector — it's that the 
 
 **Earlier backtest (1.1M signals):** confirmed the same underlying tension from a different angle — informed-longshot signals carry real edge in aggregate (+7.8%), but a naive follow-the-signal execution strategy is dead on arrival, because the market re-prices before the follow trade can execute.
 
-**Practical use:** rather than an attack strategy, the detector is repurposed as a **toxic-flow filter** for market-making risk management (see [MarketMakerBot](../MarketMakerBot)) — useful as a defensive signal even where it fails as an offensive one.
+**Practical use:** rather than an attack strategy, the detector is repurposed as a **toxic-flow filter** for market-making risk management (see [MarketMakerBot](https://github.com/ALLmightyn/MarketMakerBot)) — useful as a defensive signal even where it fails as an offensive one.
 
 ## Key features
 

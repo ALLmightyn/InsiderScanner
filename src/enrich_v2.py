@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-enrich_v2.py — Sidecar-обогатитель сигналов (протокол "кристальных данных", 2026-06-10).
+enrich_v2.py — Sidecar enricher for signals ("crystal data" protocol, 2026-06-10).
 
-НЕ трогает детектор (maintest.py). Поллит таблицу signals на новые качественные
-сигналы и в момент детекта дописывает в signals_enrich:
-  - снапшот стакана CLOB (raw JSON) + исполнимые цены для $100/$300/$1000
-  - реальный slug/negRisk/category/endDate/liquidity из Gamma (по token_id)
-  - block_ts из Polygon RPC -> detect_lag_s по каждой строке
-  - heartbeat раз в 60s (аптайм доказуем)
+Does NOT touch the detector (maintest.py). Polls the signals table for new
+quality signals and, at the moment of detection, appends to signals_enrich:
+  - CLOB order book snapshot (raw JSON) + executable prices for $100/$300/$1000
+  - real slug/negRisk/category/endDate/liquidity from Gamma (by token_id)
+  - block_ts from Polygon RPC -> detect_lag_s per row
+  - heartbeat once every 60s (uptime is provable)
 
-Дизайн-инварианты:
-  - cursor стартует с MAX(id): стакан имеет смысл ТОЛЬКО в реальном времени,
-    бэкфилл старых сигналов запрещён.
-  - идемпотентность: signal_id PRIMARY KEY, INSERT OR IGNORE.
-  - один экземпляр: pid-lockfile (урок двойного запуска ADA из HLCarryBot).
-  - фильтров по гипотезе НЕТ: пишем все FRESH/WHALE/ACCUM, в т.ч. <$700
-    (негативный контроль). Гипотеза применяется только в анализе.
+Design invariants:
+  - cursor starts at MAX(id): the order book only makes sense in real time,
+    backfilling old signals is not allowed.
+  - idempotency: signal_id PRIMARY KEY, INSERT OR IGNORE.
+  - single instance: pid lockfile (lesson learned from the ADA double-launch
+    incident in HLCarryBot).
+  - no hypothesis-based filtering: we write all FRESH/WHALE/ACCUM, including <$700
+    (negative control). The hypothesis is applied only at analysis time.
 """
 import asyncio
 import aiohttp
@@ -52,7 +53,7 @@ def acquire_lock():
         try:
             old = int(open(LOCK_FILE).read().strip())
             os.kill(old, 0)
-            log(f"FATAL: уже запущен pid={old}, выходим")
+            log(f"FATAL: already running as pid={old}, exiting")
             sys.exit(1)
         except (ProcessLookupError, ValueError):
             pass  # stale lock
@@ -88,7 +89,7 @@ async def get_cursor(db):
         "INSERT OR REPLACE INTO system_state (task_name, last_run) VALUES ('enrich_v2_cursor', ?)",
         (max_id,))
     await db.commit()
-    log(f"первый запуск: cursor = MAX(id) = {max_id} (бэкфилла нет — стакан валиден только live)")
+    log(f"first run: cursor = MAX(id) = {max_id} (no backfill — the order book is only valid live)")
     return max_id
 
 async def save_cursor(db, cid):
@@ -169,7 +170,7 @@ class Enricher:
 
     @staticmethod
     def walk_asks(book, usd_amounts, trade_px):
-        """Исполнимая средняя цена покупки на $X по ask-стороне + депth в пределах 1.2x trade_px."""
+        """Executable average buy price for $X on the ask side + depth within 1.2x trade_px."""
         try:
             asks = sorted(
                 [(float(a["price"]), float(a["size"])) for a in book.get("asks", [])],
@@ -277,10 +278,10 @@ async def main():
                         log(f"enrich fail id={sig['id']}: {e}")
 
                 if len(rows) == 50:
-                    # полный батч: возможно, есть ещё качественные — двигаемся только до последней обработанной
+                    # full batch: there may be more quality signals — only advance to the last one processed
                     new_cursor = rows[-1]["id"]
                 else:
-                    # все качественные до MAX(id) обработаны — перепрыгиваем бот-спам
+                    # all quality signals up to MAX(id) processed — skip past bot spam
                     cur2 = await db.execute("SELECT COALESCE(MAX(id), ?) FROM signals", (cursor,))
                     new_cursor = (await cur2.fetchone())[0]
                 if new_cursor != cursor:

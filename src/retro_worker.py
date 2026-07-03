@@ -1805,7 +1805,7 @@ async def main():
     Uses database-backed state management to track last run times.
     Oracle Pulse: Runs every 6 hours | Retro Sniper: Runs every 12 hours
     """
-    # Первым делом — проверка окружения
+    # First things first — check the environment
     from config import check_required_env
     check_required_env()
 

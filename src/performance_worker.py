@@ -693,7 +693,7 @@ async def analyze_trader(session, wallet: str):
 
 
 async def worker():
-    # Первым делом — проверка окружения
+    # First things first — check the environment
     from config import check_required_env
     check_required_env()
 

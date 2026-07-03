@@ -42,7 +42,7 @@ class Colors:
 # ⚙️ SETTINGS
 # ==========================================
 
-# 🔥 ПРОКСИ (Только для AI запросов)
+# 🔥 PROXY (only for AI requests)
 # AI_PROXY = "http://<REDACTED-ROTATED>"
 #AI_PROXY = "http://<REDACTED-ROTATED>"
 
@@ -56,7 +56,7 @@ class Colors:
 _rpc_env = os.getenv("RPC_LIST", "")
 RPC_LIST = [u.strip() for u in _rpc_env.split(",") if u.strip()]
 if not RPC_LIST:
-    # Fallback на публичные если env не задан (для локальной разработки)
+    # Fall back to public RPCs if env is not set (for local development)
     print("[WARNING] RPC_LIST env not set — using public RPCs (slower)")
     RPC_LIST = [
         "https://polygon-rpc.com",
@@ -86,7 +86,7 @@ DATA_API_SEMAPHORE = asyncio.Semaphore(10)  # Task 2: Single concurrent Data API
 
 # BASE_DIR and DB_FILENAME are imported from config below
 
-# Настройки анализа
+# Analysis settings
 CONCURRENT_ANALYSIS = 30
 CLUSTER_MIN_PEOPLE = 3
 CLUSTER_WINDOW = 3600
@@ -427,9 +427,9 @@ def load_insiders():
 
 def calculate_risk_score(usd, dominance, predictions, is_proven):
     """
-    Расчет "Risk Score" (он же "Interest Score").
+    Computes the "Risk Score" (aka "Interest Score").
     100 = Proven Insider.
-    99 = Максимально подозрительная активность (много денег + новый акк).
+    99 = Maximally suspicious activity (lots of money + a new account).
     """
     if is_proven: return 100
     
@@ -448,7 +448,7 @@ def calculate_risk_score(usd, dominance, predictions, is_proven):
 
 async def get_polymarket_predictions(wallet_address):
     """
-    Получает точное число 'Predictions' (traded markets) из API.
+    Fetches the exact number of 'Predictions' (traded markets) from the API.
     Task 2: API Shield - Rate limited with semaphore and 1.2s delay.
     Task 6: In-Memory Cache - Prevent API bans during batch processing.
     """
@@ -465,14 +465,14 @@ async def get_polymarket_predictions(wallet_address):
         "Connection": "keep-alive"
     }
 
-    # Если сессия еще не создана или закрыта - возвращаем 0, чтобы не крашнуть бота
+    # If the session isn't created yet or is closed - return 0 to avoid crashing the bot
     if API_SESSION is None or API_SESSION.closed:
         return 0
 
     # Task 2: API Shield - Rate limiting
     async with DATA_API_SEMAPHORE:
         try:
-            # Используем глобальную API_SESSION
+            # Use the global API_SESSION
             async with API_SESSION.get(DATA_API_URL, params=params, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -820,7 +820,7 @@ async def analyzer_worker():
                 continue
 
             # ==========================================
-            # 2️⃣ ОПРЕДЕЛЯЕМ БАЗОВЫЙ СТАТУС И VIP
+            # 2️⃣ DETERMINE BASE STATUS AND VIP
             # ==========================================
             is_insider = trader in KNOWN_INSIDERS or "PROVEN" in label
             acc_key = f"{trader}_{tid}"
@@ -834,51 +834,51 @@ async def analyzer_worker():
             total_accumulated = ACCUMULATORS[acc_key]["total"]
 
             # ==========================================
-            # 3️⃣ УМНЫЙ ГЕЙТКИПЕР: СТРОГАЯ ПРОВЕРКА
+            # 3️⃣ SMART GATEKEEPER: STRICT CHECK
             # ==========================================
             final_status = 0  # 0 = Pending, 1 = Approved, 2 = Rejected
             q_upper = m['q'].upper()
             is_casino = any(kw in q_upper for kw in CASINO_KEYWORDS)
 
-            # FIX: Async проверка whitelist с использованием persistent connection
-            # Проверяем есть ли рынок уже в базе
+            # FIX: Async whitelist check using a persistent connection
+            # Check whether the market is already in the DB
             _wl_status = None  # None = not found, 1 = approved, 0 = rejected
             try:
-                # Используем persistent connection для скорости (кэшируется)
+                # Use a persistent connection for speed (cached)
                 _conn = await get_persistent_async_db_connection("maintest_whitelist")
                 _cursor = await _conn.execute(
-                    "SELECT is_approved FROM markets_whitelist WHERE slug = ?", 
+                    "SELECT is_approved FROM markets_whitelist WHERE slug = ?",
                     (m['s'],)
                 )
                 _row = await _cursor.fetchone()
                 if _row:
                     _wl_status = _row['is_approved']
-                # Не закрываем — persistent connection переиспользуется
+                # Not closing here — the persistent connection is reused
             except Exception as _wl_err:
-                # Ошибка проверки whitelist не должна блокировать сигналы
-                # Логим только если это не блокировка БД (оно норм при высокой нагрузке)
+                # A whitelist check error should not block signals
+                # Only log if it's not a DB lock (which is normal under high load)
                 if "locked" not in str(_wl_err).lower():
                     await crash_log_async("maintest_whitelist_check", _wl_err, "")
 
-            # Применяем статус из whitelist если рынок найден
+            # Apply the whitelist status if the market was found
             if _wl_status is not None:
-                # Рынок уже есть в базе - берем его статус
+                # Market is already in the DB - take its status
                 if _wl_status == 1:
-                    final_status = 2 if is_casino else 1  # Approved, но casino = rejected
+                    final_status = 2 if is_casino else 1  # Approved, but casino = rejected
                 else:
                     final_status = 2  # Rejected
             else:
-                # РЫНКА НЕТ В ВАЙТЛИСТЕ — новая заявка
+                # MARKET NOT IN THE WHITELIST — new entry
                 if is_casino:
-                    final_status = 2  # Отсекаем по ключевым словам сразу
+                    final_status = 2  # Filter out by keywords immediately
                 elif is_insider:
-                    final_status = 1  # Только проверенные кошельки проходят без ИИ
+                    final_status = 1  # Only proven wallets pass without AI
                 else:
-                    # ВСЕ ОСТАЛЬНЫЕ ждут market_discovery
+                    # EVERYONE ELSE waits for market_discovery
                     final_status = 0
 
             # ==========================================
-            # 4️⃣ FAST-FAIL (Пропускаем тяжелую on-chain логику для мелочи)
+            # 4️⃣ FAST-FAIL (Skip heavy on-chain logic for small trades)
             # ==========================================
             if not is_insider and total_accumulated < USD_LIMIT_NEW:
                 fast_meta = {
@@ -899,7 +899,7 @@ async def analyzer_worker():
                 continue
 
             # ==========================================
-            # 5️⃣ DEEP ANALYSIS (Для крупных сделок и инсайдеров)
+            # 5️⃣ DEEP ANALYSIS (For large trades and insiders)
             # ==========================================
             real_usd = None
             real_price = None
@@ -977,7 +977,7 @@ async def analyzer_worker():
             }
 
             # ==========================================
-            # 6️⃣ АЛЕРТЫ И СОХРАНЕНИЕ
+            # 6️⃣ ALERTS AND SAVING
             # ==========================================
             current_threshold = USD_LIMIT_NEW if real_predictions < PRED_LIMIT_NEW else USD_LIMIT_OLD
             current_level = int(total_accumulated // current_threshold)
@@ -999,7 +999,7 @@ async def analyzer_worker():
 
             risk_score = calculate_risk_score(total_accumulated, dom, real_predictions, is_insider)
 
-            # Сохраняем сигнал. Используем async версию для неблокирующего I/O.
+            # Save the signal. Use the async version for non-blocking I/O.
             await db_save_signal_async((
                 get_time_str(), l_text, m['q'], m['outcome'],
                 trader, final_usd, dom, real_predictions,
@@ -1008,10 +1008,10 @@ async def analyzer_worker():
                 m['q'], final_price, real_predictions, m_age_hours, final_status
             ))
 
-            # Отправить алерт если сигнал одобрен и достиг порога
+            # Send an alert if the signal is approved and hits the threshold
             # ==========================================
-            # 📡 АЛЕРТЫ — отправка через alert_manager
-            # Только для одобренных сигналов с alpha_tag
+            # 📡 ALERTS — sent via alert_manager
+            # Only for approved signals with an alpha_tag
             # ==========================================
             if final_status == 1 and alpha_tag is not None:
                 # ==========================================
@@ -1612,7 +1612,7 @@ async def reload_insiders_loop():
 async def main():
     global API_SESSION, ANALYSIS_QUEUE, DB_WRITE_QUEUE
 
-    # Очистка консоли
+    # Clear the console
     os.system('cls' if os.name == 'nt' else 'clear')
     print(f"{Colors.CYAN}{Colors.BOLD}🛡️ POLYMARKET SNIPER v2.0 {Colors.RESET}")
     print(f"{Colors.GREEN}├─ 🔗 On-Chain Price Calculation: {Colors.BOLD}ENABLED{Colors.RESET}{Colors.GREEN}")
@@ -1622,7 +1622,7 @@ async def main():
     print(f"{Colors.GREEN}├─ 🎯 Batch TX Handler: {Colors.BOLD}ACTIVE{Colors.RESET}{Colors.GREEN}")
     print(f"│  Detects individual traders in relayer batches{Colors.RESET}")
 
-    # Первым делом — проверка окружения
+    # First things first — check the environment
     from config import check_required_env
     check_required_env()
 
@@ -1643,13 +1643,13 @@ async def main():
     await init_storage_async()
     await load_insiders_async()
 
-    # --- СОЗДАНИЕ ВЕЧНОЙ СЕССИИ (Fix connection issues) ---
+    # --- CREATE A LONG-LIVED SESSION (fix connection issues) ---
     connector = aiohttp.TCPConnector(limit=100, ttl_dns_cache=300)
     timeout_settings = aiohttp.ClientTimeout(total=30, connect=10)
 
     API_SESSION = aiohttp.ClientSession(connector=connector, timeout=timeout_settings)
 
-    # Запуск фоновых задач
+    # Start background tasks
     # ==========================================
     # 🚀 STAGE 4 TASK 4: Start DB batch writer
     # ==========================================
@@ -1662,7 +1662,7 @@ async def main():
     for _ in range(CONCURRENT_ANALYSIS):
         asyncio.create_task(analyzer_worker())
     
-    # Ожидание загрузки маркетов
+    # Wait for markets to load
     while not WATCHLIST:
         sys.stdout.write(f"\r{Colors.YELLOW}⏳ Loading Markets...{Colors.RESET}")
         sys.stdout.flush()
@@ -1675,14 +1675,14 @@ async def main():
     except KeyboardInterrupt: 
         pass
     finally:
-        # Корректное закрытие сессии при выходе
+        # Gracefully close the session on exit
         if API_SESSION:
             await API_SESSION.close()
             print(f"\n{Colors.CYAN}[*] API Session Closed.{Colors.RESET}")
 
 if __name__ == "__main__":
-    # !!! ИСПРАВЛЕНИЕ ДЛЯ WINDOWS !!!
-    # Эта строчка ДОЛЖНА быть Д   asyncio.run(), иначе скрипт прост   висит или закрывается
+    # !!! WINDOWS FIX !!!
+    # This line MUST run BEFORE asyncio.run(), otherwise the script just hangs or won't close
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -1691,7 +1691,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print(f"\n{Colors.YELLOW}[!] Stopped by user{Colors.RESET}")
     except Exception as e:
-        # Если скрипт падает, мы увидим ошибку
+        # If the script crashes, we'll see the error
         print(f"\n{Colors.RED}[!!!] FATAL ERROR: {e}{Colors.RESET}")
         import traceback
         traceback.print_exc()

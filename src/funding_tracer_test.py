@@ -89,7 +89,7 @@ def get_processing_count():
     """Returns the number of signals currently being processed."""
     return len(PROCESSING_NOW)
 
-# Базовые адреса (чтобы работало даже без файла)
+# Base addresses (so it works even without the file)
 KNOWN_CONTRACTS = {
     "cex_wallets": {
         "0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be": "Binance: Hot Wallet",
@@ -117,15 +117,15 @@ def log(msg):
 
 # --- CUSTOM LABELS LOADER (Async version) ---
 async def load_all_labels_async():
-    """Объединяет встроенные метки и файл custom_labels.json (async version)"""
+    """Merges built-in labels with the custom_labels.json file (async version)"""
     combined = {}
 
-    # 1. Загружаем встроенные
+    # 1. Load the built-in labels
     for cat, items in KNOWN_CONTRACTS.items():
         for addr, name in items.items():
             combined[addr.lower()] = {"cat": cat.capitalize().rstrip("s"), "name": name}
 
-    # 2. Загружаем файл асинхронно (перезаписывает встроенные, если совпадает)
+    # 2. Load the file asynchronously (overrides built-ins on a match)
     if os.path.exists(CUSTOM_LABELS_FILE):
         if os.path.getsize(CUSTOM_LABELS_FILE) > 0:
             try:
@@ -1718,11 +1718,11 @@ async def analyze_and_alert(session, conn, wallet, res, sig_id=None, signal_data
         alpha_reason = None
 
         # 🛡️ ATOMIC ALERT LOCK (Deduplication) - GLOBAL CHECK
-        # Создаем уникальный ключ для алерта (кошелек + рынок + тип сигнала)
-        # Эта проверка предотвращает дубликаты для ВСЕХ типов алертов
+        # Create a unique key for the alert (wallet + market + signal type)
+        # This check prevents duplicates for ALL alert types
         alert_key = f"alert_lock:{wallet}_{m_slug}_{signal_type}"
-        # Пытаемся установить ключ в Redis на 60 секунд. 
-        # Если ключ уже есть, значит алерт по этой сделке уже ушел.
+        # Try to set the key in Redis for 60 seconds.
+        # If the key already exists, an alert for this trade has already gone out.
         is_new = await redis_client.set(alert_key, "1", ex=60, nx=True)
         if not is_new:
             print(f"[DEDUP] Alert already sent for {wallet[:10]} on {m_slug} ({signal_type})")
@@ -2137,7 +2137,7 @@ async def process_batch():
         else:
             log(f"[QUEUE STATUS] Remaining (approved): {remaining_count} signals")
 
-    # Кэш трейсинга для текущего батча — предотвращает дублирование
+    # Tracing cache for the current batch — prevents duplicate work
     _batch_trace_cache = {}
 
     async with aiohttp.ClientSession() as session:
@@ -2183,17 +2183,17 @@ async def process_batch():
                     continue
 
             try:
-                # Проверяем кэш текущего батча (дубли в одном батче)
+                # Check the current batch cache (duplicates within one batch)
                 w_lower = w.lower()
                 if w_lower in _batch_trace_cache:
                     res = _batch_trace_cache[w_lower]
                     log(f"   [CACHE HIT] {w[:8]}.. — reusing trace from this batch")
                 else:
-                    # Проверяем кэш БД (недавно трейсили этот кошелёк)
+                    # Check the DB cache (this wallet was recently traced)
                     async with await conn.execute(
                         "SELECT ultimate_source, source_label, funder_address, funding_ts, confidence_score "
                         "FROM funding_sources WHERE wallet_addr = ? AND last_updated > ?",
-                        (w_lower, int(time.time()) - 3600)  # кэш на 1 час
+                        (w_lower, int(time.time()) - 3600)  # 1-hour cache
                     ) as cursor:
                         cached_db = await cursor.fetchone()
 
@@ -2277,11 +2277,11 @@ async def watchdog_loop():
                         scanner_alive = False
                         log(f"[WATCHDOG] 🚨 Scanner appears dead! Block {current_block} unchanged for {age_minutes:.0f} min")
                         await alert_manager.send_telegram(
-                            f"🚨 <b>WATCHDOG: maintest.py мёртв?</b>\n\n"
-                            f"Последний блок в БД: <b>{current_block}</b>\n"
-                            f"Блок не обновляется: <b>{age_minutes:.0f} мин</b>\n\n"
-                            f"Polygon даёт ~2 блока/сек. Если прошло >5 мин — сканер упал.\n"
-                            f"Проверь: <code>pm2 logs maintest</code>"
+                            f"🚨 <b>WATCHDOG: is maintest.py dead?</b>\n\n"
+                            f"Last block in DB: <b>{current_block}</b>\n"
+                            f"Block hasn't updated for: <b>{age_minutes:.0f} min</b>\n\n"
+                            f"Polygon produces ~2 blocks/sec. If >5 min have passed — the scanner has crashed.\n"
+                            f"Check: <code>pm2 logs maintest</code>"
                         )
                 else:
                     # Block has changed - scanner is alive
@@ -2302,13 +2302,13 @@ async def watchdog_loop():
             if queue_size > 1000:
                 log(f"[WATCHDOG] ⚠️ Queue overflow: {queue_size} unprocessed signals")
                 await alert_manager.send_telegram(
-                    f"⚠️ <b>WATCHDOG: Очередь переполнена</b>\n\n"
-                    f"<b>{queue_size}</b> одобренных сигналов ждут трейсинга (is_analyzed=1).\n"
-                    f"Возможные причины:\n"
-                    f"— Всплеск активности на рынке\n"
-                    f"— PolygonScan API лагает\n"
-                    f"— funding_tracer завис\n\n"
-                    f"Проверь: <code>pm2 logs funding_tracer_test</code>"
+                    f"⚠️ <b>WATCHDOG: Queue overflow</b>\n\n"
+                    f"<b>{queue_size}</b> approved signals are waiting for tracing (is_analyzed=1).\n"
+                    f"Possible causes:\n"
+                    f"— Spike in market activity\n"
+                    f"— PolygonScan API is lagging\n"
+                    f"— funding_tracer has hung\n\n"
+                    f"Check: <code>pm2 logs funding_tracer_test</code>"
                 )
 
             if scanner_alive and queue_size <= 1000:
@@ -2323,7 +2323,7 @@ async def watchdog_loop():
 async def main():
     global LABELS_CACHE
 
-    # Первым делом — проверка окружения
+    # First things first — check the environment
     from config import check_required_env
     check_required_env()
 
@@ -2337,11 +2337,11 @@ async def main():
     log(f"[LABELS] Loaded {len(LABELS_CACHE)} custom labels")
 
     # ==========================================
-    # 🧹 STARTUP CLEANUP — 3-уровневая стратегия
+    # 🧹 STARTUP CLEANUP — 3-tier strategy
     # ==========================================
     conn = await get_async_db_connection()
 
-    # Уровень 1: Очистить stale (>48h) — они уже не актуальны
+    # Tier 1: Clear stale signals (>48h) — they're no longer relevant
     stale_cutoff = int(time.time()) - (48 * 3600)
     async with await conn.execute(
         "SELECT COUNT(*) FROM signals WHERE is_processed = 0 AND timestamp < ?",
@@ -2356,8 +2356,8 @@ async def main():
         await conn.commit()
         log(f"[🧹 CLEANUP] Cleared {stale_count} stale signals (>48h old).")
 
-    # Уровень 2: Очистить средний бэклог (30min - 48h) — старые сигналы рынок уже ушёл
-    backlog_cutoff = int(time.time()) - 1800  # 30 минут
+    # Tier 2: Clear the mid-range backlog (30min - 48h) — the market has already moved on for these old signals
+    backlog_cutoff = int(time.time()) - 1800  # 30 minutes
     async with await conn.execute(
         "SELECT COUNT(*) FROM signals WHERE is_processed = 0 AND timestamp < ? AND timestamp >= ?",
         (backlog_cutoff, stale_cutoff)
@@ -2373,7 +2373,7 @@ async def main():
     else:
         log("[🧹 CLEANUP] No backlog. System is clean.")
 
-    # Уровень 3: Сигналы моложе 30 минут — НЕ ТРОГАТЬ. Они будут обработаны нормально.
+    # Tier 3: Signals younger than 30 minutes — DO NOT TOUCH. They'll be processed normally.
     async with await conn.execute(
         "SELECT COUNT(*) FROM signals WHERE is_processed = 0 AND timestamp >= ?",
         (backlog_cutoff,)

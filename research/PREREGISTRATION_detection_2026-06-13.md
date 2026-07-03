@@ -1,48 +1,48 @@
-# ПРЕ-РЕГИСТРАЦИЯ — Детекция инсайдера (идентифицируемость + фичи)
-**Дата фиксации: 2026-06-13. После этой даты файл НЕ редактируется. Результаты пишутся отдельно.**
+# PRE-REGISTRATION — Insider Detection (identifiability + features)
+**Locked on: 2026-06-13. This file is NOT edited after this date. Results are written separately.**
 
-## Вопрос (отличается от prereg 2026-06-10)
-Prereg от 06-10 проверял ИСПОЛНИМОСТЬ (профит на ≥$700 лонгшотах). Здесь — апстрим-вопрос:
-**возможно ли в принципе ОБНАРУЖИТЬ инсайдера заранее**, и дают ли форензик-фичи
-(лаг пополнение→ставка, возраст кошелька, dominance, источник средств, время до резолюции)
-предсказательную силу. Профит/исполнимость — отдельно и позже.
+## Question (differs from the 2026-06-10 prereg)
+The 06-10 prereg tested EXECUTABILITY (profit on ≥$700 longshots). This one is the upstream question:
+**is it even possible in principle to DETECT an insider ahead of time**, and do forensic features
+(funding-to-bet lag, wallet age, dominance, source of funds, time to resolution)
+carry predictive power. Profitability/executability is separate and comes later.
 
-## Данные
-- `scanner.db` signals: 17.03–12.06.2026 (~3 мес). Лонгшоты (price<0.10): 109.6k ставок, 30.2k кош.
-- Резолюции: Gamma outcomePrices, decisive = max>0.99. Win = (token_id-сторона == winner).
-- Train = 17.03–30.04. Test (holdout) = 01.05–12.06.
+## Data
+- `scanner.db` signals: 2026-03-17 to 2026-06-12 (~3 months). Longshots (price<0.10): 109.6k bets, 30.2k wallets.
+- Resolutions: Gamma outcomePrices, decisive = max>0.99. Win = (token_id side == winner).
+- Train = 03-17 to 04-30. Test (holdout) = 05-01 to 06-12.
 
-## H0 (нулевая, что пытаемся опровергнуть)
-Инсайдеры НЕ идентифицируемы как персистентные сущности; форензик-фичи не имеют
-out-of-sample предсказательной силы для выигрыша лонгшота.
+## H0 (null hypothesis, what we're trying to reject)
+Insiders are NOT identifiable as persistent entities; forensic features have no
+out-of-sample predictive power for winning a longshot.
 
-## Study A — Персистентность кошелька (РЕШАЮЩИЙ, первым)
-- Юнит-дедуп: (market, side), non-sports, decisively resolved.
-- Candidate = кошелёк с ≥2 лонгшот-ВЫИГРЫШАМИ в TRAIN.
-- Метрика: win-rate кандидатов в TEST vs базовый win-rate всех лонгшот-ставок в TEST.
-- **Успех A:** кандидаты в TEST бьют базу на ≥3σ (binomial) И реально доставляют n_test ≥ 30 ставок.
-- Если кандидаты почти не возвращаются (n_test < 30) → вердикт «инсайдеры эпизодичны,
-  не персистентны → заранее не идентифицируемы». Это валидный отрицательный ответ.
+## Study A — Wallet persistence (DECISIVE, run first)
+- Unit dedup: (market, side), non-sports, decisively resolved.
+- Candidate = wallet with ≥2 longshot WINS in TRAIN.
+- Metric: candidate win-rate in TEST vs the baseline win-rate of all longshot bets in TEST.
+- **Success criterion A:** candidates in TEST beat baseline by ≥3σ (binomial) AND actually deliver n_test ≥ 30 bets.
+- If candidates barely reappear (n_test < 30) → verdict is "insiders are episodic,
+  not persistent → not identifiable ahead of time." This is a valid negative finding.
 
-## Study B — Сепарация по фичам (case-control, если A не пустой ИЛИ как описательный)
-- Case = выигравшие лонгшот, control = проигравшие на лонгшотах. Non-sports, дедуп.
-- Фичи: funding→bet lag (funding_sources.funding_ts), wallet_age_hours, dominance,
-  usd_size, time_to_resolution (resolved_ts − bet_ts), источник средств (ultimate_source).
-- Для каждой: эффект (case vs control) + σ. Пороги ИЩЕМ на train, ПОДТВЕРЖДАЕМ на test.
-- Множественные сравнения: Bonferroni по числу фич; засчитывается только out-of-sample.
+## Study B — Feature separation (case-control, if A is non-empty OR as a descriptive study)
+- Case = longshot winners, control = longshot losers. Non-sports, dedup.
+- Features: funding→bet lag (funding_sources.funding_ts), wallet_age_hours, dominance,
+  usd_size, time_to_resolution (resolved_ts − bet_ts), source of funds (ultimate_source).
+- For each: effect (case vs control) + σ. Thresholds are SEARCHED on train, CONFIRMED on test.
+- Multiple comparisons: Bonferroni across the number of features; only out-of-sample results count.
 
-## Негативный контроль (обязателен)
-Тот же пайплайн на mid-price ставках (0.30–0.70) — сепарация должна быть ≈0.
-Если фичи «разделяют» победителей и там → артефакт пайплайна, H0 НЕ отвергается.
+## Negative control (mandatory)
+Same pipeline applied to mid-price bets (0.30–0.70) — separation should be ≈0.
+If features "separate" winners there too → pipeline artifact, H0 is NOT rejected.
 
-## Гигиена
-- Дыры heartbeat исключаются (collector_heartbeat).
-- wallet_relationships ПУСТА → граф связей в этой итерации НЕ оценивается (честно отметить).
-- signals = только «замеченные» сделки (смещение); если A/B пограничны — дотянуть полную
-  историю кошельков-кандидатов с data-api.polymarket.com перед финальным вердиктом.
+## Hygiene
+- Heartbeat gaps are excluded (collector_heartbeat).
+- wallet_relationships is EMPTY → the relationship graph is NOT evaluated in this iteration (noted honestly).
+- signals = only "detected" trades (a bias); if A/B come out borderline — pull the
+  full history of candidate wallets from data-api.polymarket.com before the final verdict.
 
-## Критерий решения
-- A персистентна И ≥1 фича держится out-of-sample И негативный контроль чист
-  → инсайдер ДЕТЕКТИРУЕМ; зафиксировать какие инструменты работают; дальше — исполнимость.
-- Иначе → детекция инсайдера признаётся структурно невозможной на нашем масштабе данных;
-  направление закрывается БЕЗ переформулировок задним числом.
+## Decision criterion
+- A is persistent AND ≥1 feature holds out-of-sample AND the negative control is clean
+  → insider is DETECTABLE; record which tools work; executability comes next.
+- Otherwise → insider detection is deemed structurally impossible at our data scale;
+  this direction is closed WITHOUT post-hoc reformulation.

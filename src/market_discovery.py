@@ -172,8 +172,8 @@ async def run_discovery(session: aiohttp.ClientSession):
         if pending:
             log(f"[URGENT] Processing {len(pending)} markets from signals queue")
             for i, (slug, question) in enumerate(pending):
-                if i > 0:                          # первый запрос без задержки
-                    await asyncio.sleep(0.3)       # 0.3s между запросами = ~200 req/min
+                if i > 0:                          # first request has no delay
+                    await asyncio.sleep(0.3)       # 0.3s between requests = ~200 req/min
                 await process_market(session, conn, slug, question, is_urgent=True)
             return  # Exit early - don't waste API limits on general scan while queue exists
 
@@ -365,7 +365,7 @@ async def general_market_scan(session: aiohttp.ClientSession, conn):
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 
 async def main():
-    # Первым делом — проверка окружения
+    # First things first — check the environment
     from config import check_required_env
     check_required_env()
 
